@@ -1,0 +1,3 @@
+[submodule "VLANG"]
+	path = VLANG
+	url = https://github.com/IDWMaster/VLANG.git

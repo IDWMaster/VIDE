@@ -25,9 +25,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += main.cpp\
         mainwindow.cpp \
-    xeditor.cpp
+    xeditor.cpp \
+    VLANG/emit.cpp \
+    VLANG/parser.cpp \
 
 HEADERS  += mainwindow.h \
-    xeditor.h
+    xeditor.h \
+    VLANG/parser_api.h
 
 FORMS    += mainwindow.ui

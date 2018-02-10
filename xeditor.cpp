@@ -3,107 +3,132 @@
 #include <QPainter>
 #include <QPaintDevice>
 #include <QTimer>
+#include "VLANG/parser_api.h"
+#include <sstream>
+#include <QTextBlock>
 
-enum PaintOp {
-    FULL_REDRAW,
-    DRAW_CURSOR
-};
 
-class PaintCommand {
-public:
-    PaintOp op;
-    PaintCommand* next = 0;
-    PaintCommand(PaintOp op) {
-        this->op = op;
-    }
-};
-
-XEditor::XEditor(QWidget* parent):QWidget(parent) {
+XEditor::XEditor(QWidget* parent):QTextEdit(parent) {
 
 }
+
+extern thread_local std::map<const char*,Node*> lookup_table;
+
 
 class XEditorImpl:public XEditor {
 Q_OBJECT
 public:
-    PaintCommand* cmd = 0;
-    PaintCommand* end = 0;
-    double cursorX = 0;
-    double cursorY = 0;
-    bool cursorEnable = false;
-    QTimer* cursorRefreshTimer;
-    void pushcmd(PaintCommand* cmd) {
-        if(!this->cmd) {
-            this->cmd = cmd;
-        }else {
-            this->cmd->next = cmd;
-        }
-        end = cmd;
+    ExternalCompilerContext* ctx;
+    XEditorImpl(QWidget* parent):XEditor(parent) {
+        setLineWrapMode(LineWrapMode::NoWrap);
+        ctx = compiler_new();
     }
-    void pushredraw() {
-        pushcmd(new PaintCommand(FULL_REDRAW));
+    std::string token_text; //Current text for token
+    ScopeNode* token_scope = 0; //Current scope for token
+    Node* token = 0; //Current token
+    size_t token_offset = 0; //Current offset into token
+    size_t token_len = 0;
+    //Parse and syntax-highlight code
+    void parse() {
+        if(token) {
+            delete token;
+        }
+        Node** nodes;
+        size_t len;
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::PreviousCharacter,QTextCursor::KeepAnchor,token_offset);
+
+        setTextCursor(cursor);
+        std::string errstr;
+        if(!ctx->parse(token_text.data(),token_scope,&nodes,&len)) {
+            //Error -- apply red underline
+            errstr = "Illegal expression";
+            goto token_err;
+        }else {
+            token = nodes[0];
+            token_scope = nodes[0]->node_scope;
+            QTextCharFormat fmt;
+            std::stringstream ss;
+            ss<<(void*)token;
+            fmt.setAnchorName(ss.str().data());
+            textCursor().insertText(token_text.data(),fmt);
+            token_len = token_text.size();
+        }
+        return;
+        token_err:
+        token_len = 0;
+        QTextCharFormat fmt;
+        fmt.setToolTip(errstr.data());
+        fmt.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
+        fmt.setUnderlineColor(Qt::red);
+        fmt.setFontUnderline(true);
+        textCursor().insertText(token_text.data(),fmt);
+
+    }
+    void setTokenInfo() {
+        QByteArray byteme = textCursor().blockCharFormat().anchorName().toUtf8();
+        Node* n = (Node*)atoll(byteme.data()); //For whom the atolls
+        if(n) {
+            token = n;
+
+        }
     }
 
-    int blinkInterval = 500;
-    XEditorImpl(QWidget* parent):XEditor(parent) {
-        cursorRefreshTimer = new QTimer(this);
-        cursorRefreshTimer->setInterval(blinkInterval);
-        connect(cursorRefreshTimer,&QTimer::timeout,this,[=](){
-            cursorEnable = !cursorEnable;
-            pushcmd(new PaintCommand(DRAW_CURSOR));
-            update();
-        });
-        cursorRefreshTimer->start();
-        update(); //Force full redraw
+    void keyPressEvent(QKeyEvent *e) {
+
+        if(e->modifiers() & Qt::ControlModifier) {
+            switch(e->key()) {
+            case Qt::Key_C:
+                //Copy selection
+                this->copy();
+                break;
+            case Qt::Key_V:
+                break;
+            case Qt::Key_A:
+                break;
+            case Qt::Key_Left:
+            case Qt::Key_Right:
+            case Qt::Key_Up:
+            case Qt::Key_Down:
+                XEditor::keyPressEvent(e);
+            }
+            return;
+        }
+        switch(e->key()) {
+        case Qt::Key_Left:
+        case Qt::Key_Right:
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+            XEditor::keyPressEvent(e);
+            break;
+        default:
+            //Insert one character of text
+            e->accept();
+            QByteArray byteme = e->text().toUtf8();
+            token_text+=byteme.data();
+            parse();
+            token_offset++;
+            break;
+        }
+        setTokenInfo();
+        if(token_offset == token_len) {
+            //End of token
+            token_offset = 0;
+            token_len = 0;
+            token = 0;
+            token_text.clear();
+            //Find next token
+
+        }
+    }
+    void mousePressEvent(QMouseEvent* evt) {
+        evt->accept();
+    }
+    void contextMenuEvent(QContextMenuEvent* evt) {
+        evt->accept();
     }
 
 protected:
-    QPixmap* pbo = 0;
-    void paintEvent(QPaintEvent* evt) {
-        //Check if we need a viewport refresh
-        QPainter painter(this);
-        if(pbo == 0) {
-            pushredraw(); //Need a redraw.
-            pbo = new QPixmap(painter.window().width(),painter.window().height());
-        }
-        if((pbo->width() != painter.window().width()) || (pbo->height() != painter.window().height())) {
-            pushredraw();
-        }
-        //Paint widget
-        doPaint();
-        painter.drawPixmap(0,0,*pbo);
-    }
-
-    void doPaint() {
-
-        QPainter painter(pbo);
-        QBrush background = Qt::black;
-        if(!cmd) {
-            pushredraw();
-        }
-        while(this->cmd) {
-        PaintCommand* cmd = this->cmd;
-        this->cmd = cmd->next;
-
-        switch(cmd->op) {
-        case FULL_REDRAW:
-            painter.setRenderHint(QPainter::Antialiasing,true);
-            painter.fillRect(QRect(0,0,painter.window().width(),painter.window().height()),background);
-            pushcmd(new PaintCommand(DRAW_CURSOR));
-            break;
-        case DRAW_CURSOR:
-        {
-            if(cursorEnable) {
-                painter.fillRect(QRectF(cursorX,cursorY,1,10),Qt::white);
-            }else {
-                painter.fillRect(QRectF(cursorX,cursorY,1,10),background);
-            }
-        }
-            break;
-        }
-
-        delete cmd;
-    }
-    }
 
 };
 
