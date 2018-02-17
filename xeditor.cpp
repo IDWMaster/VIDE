@@ -83,6 +83,11 @@ public:
                 insstr[tsize] = prevchar;
             }
         }
+
+        cursor = textCursor();
+        cursor.movePosition(QTextCursor::PreviousCharacter,QTextCursor::MoveAnchor,token_text.size()-token_offset-1);
+        setTextCursor(cursor);
+
         return;
         token_err:
         QTextCharFormat fmt;
@@ -92,7 +97,9 @@ public:
         fmt.setFontUnderline(true);
         fmt.setAnchorName("");
         textCursor().insertText(token_text.data(),fmt);
-
+        cursor = textCursor();
+        cursor.movePosition(QTextCursor::PreviousCharacter,QTextCursor::MoveAnchor,token_text.size()-token_offset-1);
+        setTextCursor(cursor);
     }
     void setTokenInfo() {
         QByteArray byteme = textCursor().charFormat().anchorName().toUtf8();
