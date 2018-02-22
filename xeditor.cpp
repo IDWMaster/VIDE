@@ -157,8 +157,15 @@ public:
                     changedText = ((ExtendedTokenInfo*)token->ide_context)->start;
                     changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
                 }else {
-                    changedText.setPosition(textCursor().position()-1);
-                    changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
+                    //We're in a valid token
+                    QTextCursor tpos = token_select(token);
+                    if(textCursor().anchor()+1>=tpos.anchor() && textCursor().anchor()+1<=tpos.position()) {
+                        changedText = tpos;
+                        changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
+                    }else {
+                        changedText.setPosition(textCursor().position()-1);
+                        changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
+                    }
                 }
             }else {
                 changedText = textCursor();
