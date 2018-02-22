@@ -39,7 +39,7 @@ public:
         return toUnicode(str).length();
     }
     std::string fromUnicode(QString str) {
-        QByteArray byteme = str.toUtf8();
+        QByteArray byteme = str.replace(QChar(0x2029),'\n').toUtf8();
         return byteme.data();
     }
 
@@ -165,7 +165,8 @@ public:
         default:
             //Insert one character of text
             e->accept();
-            textCursor().insertText(e->text());
+            QString text = e->text();
+            textCursor().insertText(text);
             changedText = textCursor();
             changedText.movePosition(QTextCursor::PreviousCharacter);
             changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
