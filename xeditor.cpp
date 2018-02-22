@@ -30,7 +30,6 @@ public:
         ctx = compiler_new();
     }
     ScopeNode* token_scope = 0; //Current scope for token
-    Node* token = 0; //Current token
     //Parse and syntax-highlight code at current offset
 
     QString toUnicode(const char* str) {
@@ -51,12 +50,30 @@ public:
     }
     QTextCursor changedText; //Text to reparse
     void parse() {
-        setTokenInfo();
-        std::string token_text = fromUnicode(changedText.selectedText());
-        if(token) {
-            delete token;
-            token = 0;
+
+        std::string token_text;
+
+        QTextCursor changed_selection = changedText;
+        QTextCursor totalChanged = changedText;
+        while(changed_selection.anchor()<=changedText.position()) {
+            Node* token = findToken(changed_selection);
+            if(token) {
+                QTextCursor tokenpos = token_select(token);
+                tokenpos.setCharFormat(QTextCharFormat());
+                if(tokenpos.anchor()<totalChanged.anchor()) {
+                    totalChanged.setPosition(tokenpos.anchor(),QTextCursor::MoveAnchor);
+                }
+                if(tokenpos.position()>totalChanged.position()) {
+                    totalChanged.setPosition(tokenpos.position(),QTextCursor::KeepAnchor);
+                }
+                changed_selection.movePosition(QTextCursor::NextCharacter,QTextCursor::MoveAnchor,token->ide_token_size);
+                delete token;
+            }else {
+                break;
+            }
         }
+
+        token_text = fromUnicode(totalChanged.selectedText());
 
         Node* empty[1];
 
@@ -77,7 +94,7 @@ public:
             size_t tsize = 0;
             for(size_t i = 0;i<len;i++) {
                 ExtendedTokenInfo* tinfo = new ExtendedTokenInfo();
-                token = nodes[i];
+                Node* token = nodes[i];
                 token_scope = nodes[i]->node_scope;
                 token->ide_context = tinfo;
                 if(token->ide_token_size == 0) {
@@ -100,23 +117,23 @@ public:
                 }
                 QString str = fmt.anchorName();
                 tinfo->start = QTextCursor(document());
-                tinfo->start.setPosition(changedText.anchor()+(tsize-token->ide_token_size));
+                tinfo->start.setPosition(totalChanged.anchor()+(tsize-token->ide_token_size));
                 //the number of characters in the token somehow.
                 tinfo->start.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,token->ide_token_size); //Select complete block
                 int pos = tinfo->start.position();
                 token_select(token).setCharFormat(fmt);
         }
     }
-    void setTokenInfo() {
+    Node* findToken(QTextCursor cursor) {
         QByteArray byteme = textCursor().charFormat().anchorName().toUtf8();
         std::stringstream ss;
         ss<<byteme.data();
         void* nin = 0;
         ss>>nin;
         Node* n = (Node*)nin;
-        token = n;
-
+        return n;
     }
+
 
     void keyPressEvent(QKeyEvent *e) {
 
@@ -135,7 +152,6 @@ public:
             case Qt::Key_Up:
             case Qt::Key_Down:
                 XEditor::keyPressEvent(e);
-                setTokenInfo();
             }
             return;
         }
@@ -145,34 +161,14 @@ public:
         case Qt::Key_Up:
         case Qt::Key_Down:
             XEditor::keyPressEvent(e);
-            setTokenInfo();
             break;
         default:
             //Insert one character of text
             e->accept();
             textCursor().insertText(e->text());
-            if(token) {
-                if(token->type == Invalid) {
-                    //Invalid token -- set bounds
-                    changedText = ((ExtendedTokenInfo*)token->ide_context)->start;
-                    changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
-                }else {
-                    //We're in a valid token
-                    QTextCursor tpos = token_select(token);
-                    if(textCursor().anchor()+1>=tpos.anchor() && textCursor().anchor()+1<=tpos.position()) {
-                        changedText = tpos;
-                        changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
-                    }else {
-                        changedText.setPosition(textCursor().position()-1);
-                        changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
-                    }
-                }
-            }else {
-                changedText = textCursor();
-                changedText.movePosition(QTextCursor::PreviousCharacter);
-                changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
-            }
-
+            changedText = textCursor();
+            changedText.movePosition(QTextCursor::PreviousCharacter);
+            changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
             parse();
             break;
         }
