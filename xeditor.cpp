@@ -9,6 +9,7 @@
 
 
 
+
 class ExtendedTokenInfo:public ExternalObject {
 public:
     QTextCursor start;
