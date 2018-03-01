@@ -49,15 +49,17 @@ public:
        QTextCursor retval = tinfo->start;
        return retval;
     }
-    QTextCursor changedText; //Text to reparse
-    void parse() {
 
-        std::string token_text;
-
-        QTextCursor changed_selection = changedText;
-        QTextCursor totalChanged = changedText;
-        while(changed_selection.anchor()<=changedText.position()) {
+    void deleteSelection(QTextCursor selection) {
+        QTextCursor changed_selection = selection;
+        QTextCursor totalChanged = selection;
+        Node* prev = 0;
+        while(changed_selection.anchor()<=selection.position()) {
             Node* token = findToken(changed_selection);
+            if(token == prev) {
+                break;
+            }
+            prev = token;
             if(token) {
                 QTextCursor tokenpos = token_select(token);
                 tokenpos.setCharFormat(QTextCharFormat());
@@ -73,7 +75,37 @@ public:
                 break;
             }
         }
+    }
+    QTextCursor getTotalChanges(QTextCursor selection) {
+        QTextCursor changed_selection = selection;
+        QTextCursor totalChanged = selection;
+        Node* prev = 0;
+        while(changed_selection.anchor()<=selection.position()) {
+            Node* token = findToken(changed_selection);
+            if(token == prev) {
+                break;
+            }
+            prev = token;
+            if(token) {
+                QTextCursor tokenpos = token_select(token);
+                if(tokenpos.anchor()<totalChanged.anchor()) {
+                    totalChanged.setPosition(tokenpos.anchor(),QTextCursor::MoveAnchor);
+                }
+                if(tokenpos.position()>totalChanged.position()) {
+                    totalChanged.setPosition(tokenpos.position(),QTextCursor::KeepAnchor);
+                }
+                changed_selection.movePosition(QTextCursor::NextCharacter,QTextCursor::MoveAnchor,token->ide_token_size);
+            }else {
+                break;
+            }
+        }
+        return totalChanged;
+    }
 
+    void parse(QTextCursor changedText) {
+
+        std::string token_text;
+        QTextCursor totalChanged = getTotalChanges(changedText);
         token_text = fromUnicode(totalChanged.selectedText());
 
         Node* empty[1];
@@ -168,10 +200,13 @@ public:
             e->accept();
             QString text = e->text();
             textCursor().insertText(text);
-            changedText = textCursor();
+            QTextCursor changedText = textCursor();
             changedText.movePosition(QTextCursor::PreviousCharacter);
             changedText.movePosition(QTextCursor::NextCharacter,QTextCursor::KeepAnchor,1);
-            parse();
+            changedText = getTotalChanges(changedText);
+            deleteSelection(changedText);
+            changedText.setCharFormat(QTextCharFormat());
+            parse(changedText);
             break;
         }
     }
