@@ -40,6 +40,7 @@ public:
     XEditorImpl(QWidget* parent):XEditor(parent) {
         setLineWrapMode(LineWrapMode::NoWrap);
         ctx = compiler_new();
+        rootScope.name = "global";
     }
     ScopeNode* token_scope = 0; //Current scope for token
     //Parse and syntax-highlight code at current offset
@@ -114,6 +115,10 @@ public:
         return totalChanged;
     }
 
+
+    //Current root scope
+    ScopeNode rootScope;
+
     void parse(QTextCursor changedText) {
 
         std::string token_text;
@@ -124,9 +129,12 @@ public:
 
         Node** nodes;
         size_t len;
-        std::string errstr;
-        bool ean = ctx->parse(token_text.data(),token_scope,&nodes,&len);
+        std::string errstr = "Syntax error";
+        bool ean = ctx->parse(token_text.data(),&rootScope,&nodes,&len);
         if(!ean) {
+            for(size_t i = 0;i<len;i++) {
+                delete nodes[i];
+            }
             nodes = empty;
             len = 1;
             nodes[0] = new Node(Invalid);
@@ -140,7 +148,6 @@ public:
             for(size_t i = 0;i<len;i++) {
                 ExtendedTokenInfo* tinfo = new ExtendedTokenInfo();
                 Node* token = nodes[i];
-                token_scope = nodes[i]->node_scope;
                 token->ide_context = tinfo;
                 if(token->ide_token_size == 0) {
                     if(i+1<len) {
@@ -169,9 +176,25 @@ public:
                 token_select(token).setCharFormat(fmt);
         }
 
-
+if(ean) {
             //Perform verification on each node
+            ValidationError* errors;
+            size_t errlen;
+            if(ctx->verify(&rootScope,nodes,len,&errors,&errlen)) {
+                //TODO: Codegen
+            }else {
+                for(size_t i = 0;i<errlen;i++) {
+                    ValidationError* error = errors+i;
 
+                    QTextCharFormat fmt = token_select(error->node).charFormat();
+                    fmt.setToolTip(error->msg.data());
+                    fmt.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
+                    fmt.setUnderlineColor(Qt::red);
+                    fmt.setFontUnderline(true);
+                    token_select(error->node).setCharFormat(fmt);
+                }
+            }
+}
     }
     Node* findToken(QTextCursor cursor) {
         QByteArray byteme = textCursor().charFormat().anchorName().toUtf8();
